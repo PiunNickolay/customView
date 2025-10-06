@@ -1,5 +1,6 @@
 package ru.netology.statsview.UI
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -28,6 +29,7 @@ class StatsView @JvmOverloads constructor(
     private var lineWidth = AndroidUtils.dp(context, 5)
     private var colors = emptyList<Int>()
 
+
     init {
         context.withStyledAttributes(attributeSet, R.styleable.StatsView) {
             textSize = getDimension(R.styleable.StatsView_textSize, textSize)
@@ -50,11 +52,14 @@ class StatsView @JvmOverloads constructor(
             } else {
                 value.map { it / total }
             }
-            invalidate()
+            startAnimation()
         }
     private var radius = 0F
     private var center = PointF()
     private var oval = RectF()
+    private var progress = 0F
+    private var rotationAngle = 0F
+
     private val paint = Paint(
         Paint.ANTI_ALIAS_FLAG
     ).apply {
@@ -86,20 +91,38 @@ class StatsView @JvmOverloads constructor(
         if (data.isEmpty()) {
             return
         }
+
+        canvas.save()
+        canvas.rotate(rotationAngle, center.x, center.y)
+
         var startAngle = -90F
-        val angleOffset = (paint.strokeWidth / (2 * Math.PI * radius) * 360).toFloat()
+        var drawn = 0F
+
         data.forEachIndexed { index, datum ->
-            val angle = datum * 360F
+            val end = drawn + datum
+
+            val partProgress = when {
+                progress >= end -> 1F
+                progress <= drawn -> 0F
+                else -> (progress - drawn) / datum
+            }
+
+            val angle = datum * 360F * partProgress
             paint.color = colors.getOrElse(index) { generateRandomColor() }
-            canvas.drawArc(
-                oval,
-                startAngle + angleOffset,
-                angle,
-                false,
-                paint
-            )
-            startAngle += angle
+
+            if (angle > 0F) {
+                canvas.drawArc(
+                    oval,
+                    startAngle,
+                    angle,
+                    false,
+                    paint
+                )
+            }
+            startAngle += angle * 360f
+            drawn = end
         }
+        canvas.restore()
 
         canvas.drawText(
             "%.2f%%".format(data.sum() * 100),
@@ -107,6 +130,17 @@ class StatsView @JvmOverloads constructor(
             center.y + textPaint.textSize / 4,
             textPaint
         )
+    }
+
+    private fun startAnimation(){
+        val animator = ValueAnimator.ofFloat(0F, 1F)
+        animator.duration = 2000L
+        animator.addUpdateListener { anim->
+            progress = anim.animatedValue as Float
+            rotationAngle = 360F * progress
+            invalidate()
+        }
+        animator.start()
     }
 
     private fun generateRandomColor() = Random.nextInt(0xFF000000.toInt(), 0xFFFFFFFF.toInt())
